@@ -1,7 +1,7 @@
 import { API } from 'homebridge';
-import { PLATFORM_NAME } from './settings';
+import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
 import { IdealLEDPlatform } from './platform';
 
 export = (api: API) => {
-  api.registerPlatform(PLATFORM_NAME, IdealLEDPlatform);
+  api.registerPlatform(PLUGIN_NAME, PLATFORM_NAME, IdealLEDPlatform);
 };
