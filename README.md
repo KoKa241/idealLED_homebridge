@@ -5,7 +5,7 @@
   <a href="https://homebridge.io"><img src="https://img.shields.io/badge/Homebridge-1.8.0%2B-purple?logo=homebridge&logoColor=white" alt="Homebridge"></a>
 </p>
 
-A native Homebridge plugin for my [iDeal LED](https://github.com/8none1/idealLED) fork. It seamlessly connects to your Python backend server to manage and control your iDeal LED strips directly from Apple HomeKit.
+A native Homebridge plugin adapted from the [idealLED Home Assistant integration](https://github.com/KoKa241/idealLED_Home_Assistant). It seamlessly connects to your Python backend server to manage and control your iDeal LED strips directly from Apple HomeKit.
 
 ## Features
 
@@ -24,17 +24,30 @@ A native Homebridge plugin for my [iDeal LED](https://github.com/8none1/idealLED
 
 ## Installation
 
-### Option 1: Install via Homebridge UI
-1. Open your Homebridge Config UI X dashboard.
-2. Go to the **Plugins** tab.
-3. Search for `homebridge-ideal-led` and click **Install**.
-4. Use the custom configuration screen to enter your Python Server URL (IP and port).
+### Option 1: Install via Homebridge CLI (Recommended)
 
-### Option 2: Build from Source
+Run the following command on your Homebridge host (e.g., Raspberry Pi) to install directly from the GitHub repository:
+
+```bash
+sudo hb-service add https://github.com/KoKa241/idealLED_homebridge.git
+```
+
+This will download the plugin, set it up, and restart Homebridge.
+
+### Option 2: Install via npm (Global)
+
+If you are not using `hb-service`, you can install it globally via npm:
+
+```bash
+npm install -g https://github.com/KoKa241/idealLED_homebridge.git
+```
+
+### Option 3: Development / Build from Source
+
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/your-username/idealLed_homebridge.git
-   cd idealLed_homebridge
+   git clone https://github.com/KoKa241/idealLED_homebridge.git
+   cd idealLED_homebridge
    ```
 2. **Install dependencies and build:**
    ```bash
