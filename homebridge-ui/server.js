@@ -25,6 +25,20 @@ class PluginUiServer extends HomebridgePluginUiServer {
       }
     });
 
+    // Handle effect request
+    this.onRequest('/setEffect', async (payload) => {
+      try {
+        const response = await axios.post(`${payload.serverUrl}/api/device/${payload.mac}/command`, {
+          command: 'set_effect',
+          effect: payload.effect,
+          brightness: 255
+        });
+        return response.data;
+      } catch (e) {
+        throw new Error(e.message);
+      }
+    });
+
     this.ready();
   }
 }
