@@ -1,0 +1,29 @@
+<link rel="stylesheet" href="style.css">
+<div class="ideal-led-ui">
+  <div class="header">
+    <div class="logo"></div>
+    <h1>iDeal LED Settings</h1>
+    <p>Configure and discover your LED strips connected to the Python server.</p>
+  </div>
+  
+  <div class="card">
+    <h2>Server Configuration</h2>
+    <div class="form-group">
+      <label for="serverUrl">Python Server URL</label>
+      <input type="text" id="serverUrl" placeholder="http://127.0.0.1:8282" />
+    </div>
+    <button class="btn btn-primary" id="saveConfig">Save Server URL</button>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2>Discovered Devices</h2>
+      <button class="btn btn-secondary" id="discoverBtn">Discover</button>
+    </div>
+    <div class="discovery-status" id="discoveryStatus"></div>
+    <div class="device-list" id="deviceList">
+      <!-- Devices will be populated here -->
+    </div>
+  </div>
+</div>
+<script src="main.js"></script>

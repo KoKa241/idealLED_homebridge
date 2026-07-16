@@ -1,0 +1,18 @@
+{
+  "pluginAlias": "IdealLED",
+  "pluginType": "platform",
+  "singular": true,
+  "customUi": true,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "serverUrl": {
+        "title": "Python Server URL",
+        "type": "string",
+        "default": "http://127.0.0.1:8282",
+        "required": true,
+        "description": "The URL of the iDeal LED Python server."
+      }
+    }
+  }
+}

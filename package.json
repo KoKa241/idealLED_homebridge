@@ -1,0 +1,38 @@
+{
+  "name": "homebridge-ideal-led",
+  "displayName": "Ideal LED",
+  "version": "1.0.0",
+  "description": "Homebridge plugin for idealLED server.",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/homebridge/homebridge.git"
+  },
+  "engines": {
+    "node": "^18.14.2 || ^20.9.0 || ^22.0.0",
+    "homebridge": "^1.8.0"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "rimraf ./dist && tsc",
+    "test": "jest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "homebridge-plugin",
+    "idealled"
+  ],
+  "dependencies": {
+    "@homebridge/plugin-ui-utils": "^2.2.5",
+    "axios": "^1.7.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^20.14.0",
+    "homebridge": "^1.8.0",
+    "jest": "^30.4.2",
+    "rimraf": "^5.0.7",
+    "ts-jest": "^29.4.11",
+    "typescript": "^5.5.0"
+  }
+}
