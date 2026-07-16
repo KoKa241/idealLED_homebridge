@@ -13,6 +13,11 @@
     "homebridge": "^1.8.0"
   },
   "main": "dist/index.js",
+  "files": [
+    "dist",
+    "config.schema.json",
+    "homebridge-ui"
+  ],
   "scripts": {
     "build": "rimraf ./dist && tsc",
     "test": "jest",
