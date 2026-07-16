@@ -33,29 +33,12 @@
         response.devices.forEach(device => {
           const div = document.createElement('div');
           div.className = 'device-item';
-          div.style.marginBottom = '15px';
-          div.style.padding = '10px';
-          div.style.border = '1px solid #ddd';
-          div.style.borderRadius = '5px';
-          
-          let effectOptions = '';
-          for(let i=1; i<=10; i++) {
-             const effectName = 'Effect ' + i.toString().padStart(2, '0');
-             effectOptions += `<option value="${effectName}">${effectName}</option>`;
-          }
-
           div.innerHTML = `
-            <div class="device-info" style="margin-bottom: 10px;">
+            <div class="device-info">
               <h3>${device.name}</h3>
               <p>${device.mac}</p>
             </div>
-            <div style="display: flex; gap: 10px; align-items: center;">
-              <button class="btn btn-secondary" onclick="testDevice('${device.mac}', '${serverUrl}')">Test Power</button>
-              <select id="effect_${device.mac.replace(/:/g, '')}" class="form-control" style="width: auto;">
-                ${effectOptions}
-              </select>
-              <button class="btn btn-primary" onclick="setDeviceEffect('${device.mac}', '${serverUrl}')">Set Effect</button>
-            </div>
+            <div><button class="btn btn-secondary" onclick="testDevice('${device.mac}', '${serverUrl}')">Test</button></div>
           `;
           listEl.appendChild(div);
         });
@@ -76,19 +59,6 @@
       homebridge.toast.success('Test command sent!');
     } catch (e) {
       homebridge.toast.error('Test failed: ' + e.message);
-    }
-  };
-
-  // Global effect function
-  window.setDeviceEffect = async (mac, serverUrl) => {
-    try {
-      const selectId = 'effect_' + mac.replace(/:/g, '');
-      const effect = document.getElementById(selectId).value;
-      homebridge.toast.info(`Setting ${effect} for ${mac}...`);
-      await homebridge.request('/setEffect', { mac, serverUrl, effect });
-      homebridge.toast.success('Effect set successfully!');
-    } catch (e) {
-      homebridge.toast.error('Failed to set effect: ' + e.message);
     }
   };
 })();
