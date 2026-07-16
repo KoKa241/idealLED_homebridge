@@ -21,8 +21,7 @@
   "scripts": {
     "build": "rimraf ./dist && tsc",
     "test": "jest",
-    "prepublishOnly": "npm run build",
-    "prepare": "npm run build"
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "homebridge-plugin",
