@@ -42,8 +42,13 @@ class IDEALLEDSpeedSlider(NumberEntity):
         self._attr_mode = NumberMode.SLIDER
         self._attr_icon = "mdi:speedometer"
 
-        # Register callback for updates from the device
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
         self._instance.speed_local_callback = self.speed_local_callback
+
+    async def async_will_remove_from_hass(self):
+        self._instance.speed_local_callback = None
+        await super().async_will_remove_from_hass()
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -59,6 +64,15 @@ class IDEALLEDSpeedSlider(NumberEntity):
         )
 
     @property
+    def should_poll(self) -> bool:
+        """Return True if entity has to be polled for state."""
+        return False
+
+    @property
+    def available(self):
+        return self._instance.available
+
+    @property
     def native_value(self) -> float:
         """Return the current effect speed."""
         return self._instance._effect_speed
@@ -67,9 +81,11 @@ class IDEALLEDSpeedSlider(NumberEntity):
         """Set the effect speed."""
         LOGGER.debug(f"Setting effect speed to {int(value)}")
         await self._instance.set_effect_speed(int(value))
-        self.async_write_ha_state()
+        if self.hass is not None:
+            self.async_write_ha_state()
 
     @callback
     def speed_local_callback(self) -> None:
         """Handle updates from the device."""
-        self.async_write_ha_state()
+        if self.hass is not None:
+            self.async_write_ha_state()

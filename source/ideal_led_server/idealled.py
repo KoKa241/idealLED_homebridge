@@ -11,9 +11,7 @@ from bleak.exc import BleakDBusError
 from bleak_retry_connector import BLEAK_RETRY_EXCEPTIONS as BLEAK_EXCEPTIONS
 from bleak_retry_connector import (
     BleakClientWithServiceCache,
-    BleakError,
     BleakNotFoundError,
-    ble_device_has_changed,
     establish_connection,
 )
 from typing import Any, TypeVar, cast, Tuple
@@ -24,30 +22,6 @@ import colorsys
 from const import COMMAND_BYTES, COMMAND_LOOKUP, FIRMWARE_OVERRIDE
 
 LOGGER = logging.getLogger(__name__)
-
-# EFFECT_01 = "Effect 01"
-# EFFECT_02 = "Effect 02"
-# EFFECT_03 = "Effect 03"
-# EFFECT_04 = "Effect 04"
-# EFFECT_05 = "Effect 05"
-# EFFECT_06 = "Effect 06"
-# EFFECT_07 = "Effect 07"
-# EFFECT_08 = "Effect 08"
-# EFFECT_09 = "Effect 09"
-# EFFECT_10 = "Effect 10"
-
-# EFFECT_MAP = {
-#     EFFECT_01: 1,
-#     EFFECT_02: 2,
-#     EFFECT_03: 3,
-#     EFFECT_04: 4,
-#     EFFECT_05: 5,
-#     EFFECT_06: 6,
-#     EFFECT_07: 7,
-#     EFFECT_08: 8,
-#     EFFECT_09: 9,
-#     EFFECT_10: 10,
-# }
 
 EFFECT_MAP = {}
 for i in range(1, 11):
@@ -279,6 +253,9 @@ class IDEALLEDInstance:
         # This doesn't work.  I can't get the controller to send notifications.
         # Updated:  Looks like newer controllers do send notifications.
         """Handle BLE notifications from the device.  Update internal state to reflect the device state."""
+        if not data or len(data) % 16:
+            LOGGER.debug("Ignoring notification with invalid AES block length")
+            return
         clear_data = _aes_ecb_decrypt(SECRET_ENCRYPTION_KEY, data)
         LOGGER.debug(
             f"BLE Notification raw: {self.name}: {bytearray_to_hex_format(data)}"
@@ -341,17 +318,11 @@ class IDEALLEDInstance:
         return self._color_mode
 
     async def set_brightness(self, brightness: int):
-        LOGGER.debug("Brightness only requested: " + str(brightness))
-        LOGGER.debug("Current brightness: " + str(self._brightness))
-        if brightness == self._brightness:
-            return
+        brightness = max(0, min(255, brightness))
+        if self._effect is not None:
+            await self.set_effect(self._effect, brightness)
         else:
-            brightness = max(0, min(255, brightness))
-            self._brightness = brightness
-            if self._effect is not None:
-                await self.set_effect(self._effect, brightness)
-            else:
-                await self.set_rgb_color(self._hs_color, brightness)
+            await self.set_rgb_color(self._hs_color, brightness)
 
     @retry_bluetooth_connection_error
     async def set_rgb_color(
@@ -374,7 +345,7 @@ class IDEALLEDInstance:
                 "Brightness not specified, using current value: %s", self._brightness
             )
             if self._brightness is None:
-                self._brightness = 255
+                brightness = self._brightness = 255
             else:
                 brightness = self._brightness
         else:
@@ -389,7 +360,7 @@ class IDEALLEDInstance:
         green = int(green)
         blue  = int(blue)
 
-        rgb_packet = COMMAND_BYTES[self._command_type]["rgb_bytes"]
+        rgb_packet = bytearray(COMMAND_BYTES[self._command_type]["rgb_bytes"])
         rgb_packet[COMMAND_BYTES[self._command_type]["red_offset"]]   = red
         rgb_packet[COMMAND_BYTES[self._command_type]["green_offset"]] = green
         rgb_packet[COMMAND_BYTES[self._command_type]["blue_offset"]]  = blue
@@ -402,10 +373,12 @@ class IDEALLEDInstance:
 
     @retry_bluetooth_connection_error
     # effect, reverse=0, speed=50, saturation=50, colour_data=COLOUR_DATA
-    async def set_effect(self, effect: str, brightness: int | None = NotImplemented):
+    async def set_effect(self, effect: str, brightness: int | None = None):
         if effect not in EFFECT_LIST:
             LOGGER.error("Effect %s not supported", effect)
-            return
+            raise ValueError(f"Unsupported effect: {effect}")
+        brightness = self._brightness if brightness is None else brightness
+        self._brightness = brightness
         self._effect = effect
         self._color_mode = ColorMode.BRIGHTNESS
         effect_id = EFFECT_MAP.get(effect)
@@ -413,7 +386,7 @@ class IDEALLEDInstance:
         brightness_pct = int(brightness /255 * 100)
         # packet = bytearray.fromhex("0A 4D 55 4C 54 08 00 64 50 07 32 00 00 00 00 00")
         # packet = bytearray.fromhex("06 4C 49 47 48 54 0C 00 00 00 00 00 00 00 00 00")
-        packet = COMMAND_BYTES[self._command_type]["effects_bytes"]
+        packet = bytearray(COMMAND_BYTES[self._command_type]["effects_bytes"])
         if self._command_type == "TYPE1":
             await self._write(packet)
             await self.write_colour_data_type1(effect_id)
@@ -466,42 +439,6 @@ class IDEALLEDInstance:
         await self._write_colour_data(colour_data)
     
     @retry_bluetooth_connection_error
-    async def write_colour_data(self, effect_id: int):
-        # This is sent after switching to an effect to tell the device what sort of pattern to show.
-        # In the app you can edit this yourself, but HA doesn't have the UI for such a thing
-        # so for now I'm just going to hardcode it to a rainbow pattern.  You could change this to
-        # whatever you want, but for an effect the maximum length is 7 colours.
-        # brightness_pct = (self._brightness / 255) * 100
-        # colour_list = []
-        # colour_divisions = int(360 / 7)
-        # for i in range(7):
-        #     h = i * colour_divisions
-        #     r, g, b = colorsys.hsv_to_rgb(h / 360, 1, brightness_pct / 100.0)
-        #     r = int(r * 255)
-        #     g = int(g * 255)
-        #     b = int(b * 255)
-        #     colour_list.append((r, g, b))
-        # #print(f"Colour list: {colour_list}")
-        # length = len(colour_list)
-        # colour_data = []
-        # colour_data.append(length*3) # 3 bytes per colour
-        # colour_data.append(0) # Don't know what this is, perhaps just a separator
-        # for colour in colour_list:
-        #     colour_data.append(colour[0])
-        #     colour_data.append(colour[1])
-        #     colour_data.append(colour[2])
-        packet1 = bytearray.fromhex("0E 45 46 46 01 07 03 FF 00 00 FF 80 00 FF FF 00")
-        packet2 = bytearray.fromhex("0E 45 46 46 01 07 13 00 FF 00 00 FF FF 00 00 FF")
-        packet3 = bytearray.fromhex("0E 45 46 46 01 07 21 80 00 FF 00 00 00 00 00 00")
-        packet1[4] = effect_id
-        packet2[4] = effect_id
-        packet3[4] = effect_id
-        await self._write(packet1)
-        await self._write(packet2)
-        await self._write(packet3)
-        # await self._write_colour_data(colour_data)
-
-    @retry_bluetooth_connection_error
     async def turn_on(self):
         # packet = bytearray.fromhex("05 54 55 52 4E 01 00 00 00 00 00 00 00 00 00 00")
         # packet = bytearray.fromhex("06 4C 45 44 4F 4E 00 00 00 00 00 00 00 00 00 00")
@@ -522,13 +459,13 @@ class IDEALLEDInstance:
         LOGGER.debug("%s: Update in ideal led called", self.name)
         try:
             await self._ensure_connected()
-            # We cannot read state currently, so we just ensure connection
-            # and leave self._is_on as its current value instead of forcing False.
+            pass  # Connecting does not reveal the physical power state.
         except Exception as error:
             self._is_on = None  # failed to connect, this should mark it as unavailable
             LOGGER.error("Error getting status: %s", error)
             track = traceback.format_exc()
             LOGGER.debug(track)
+            raise
 
     async def _ensure_connected(self) -> None:
         """Ensure connection to device is established."""
@@ -546,14 +483,24 @@ class IDEALLEDInstance:
             if self._client and self._client.is_connected:
                 self._reset_disconnect_timer()
                 return
-            # If device wasn't available at startup, try to get it now
-            if not self._device:
-                from bleak import BleakScanner
-                self._device = await BleakScanner.find_device_by_address(self._mac, timeout=10.0)
-                if not self._device:
-                    raise Exception(
-                        f"Bluetooth device {self._mac} not found. Ensure the device is powered on and in range."
-                    )
+            # Always do a fresh BLE scan before connecting.
+            # Reusing a stale BLEDevice object (from a previous session or after
+            # the Windows BLE stack temporarily loses the device) causes
+            # bleak_retry_connector to loop indefinitely with "device not found".
+            # A fresh scan gives the OS a chance to rediscover the device and
+            # returns a new BLEDevice with up-to-date advertisement data.
+            LOGGER.debug("%s: Scanning for device %s", self.name, self._mac)
+            from bleak import BleakScanner
+            fresh_device = await BleakScanner.find_device_by_address(self._mac, timeout=10.0)
+            if not fresh_device:
+                # Clear cached device so next call tries again rather than
+                # reusing the old stale object.
+                self._device = None
+                self._cached_services = None
+                raise Exception(
+                    f"Bluetooth device {self._mac} not found. Ensure the device is powered on and in range."
+                )
+            self._device = fresh_device
             LOGGER.debug("%s: Connecting", self.name)
             client = await establish_connection(
                 BleakClientWithServiceCache,
@@ -628,6 +575,9 @@ class IDEALLEDInstance:
     async def stop(self) -> None:
         """Stop the LEDBLE."""
         LOGGER.debug("%s: Stop", self.name)
+        if self._disconnect_timer:
+            self._disconnect_timer.cancel()
+            self._disconnect_timer = None
         await self._execute_disconnect()
 
     async def _execute_timed_disconnect(self) -> None:

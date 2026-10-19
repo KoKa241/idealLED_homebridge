@@ -59,3 +59,18 @@ npm install -g https://github.com/KoKa241/idealLED_homebridge.git
    npm link
    ```
 4. Restart your Homebridge instance.
+
+## Shared state with Home Assistant
+
+Configure `serverUrl` to point to the **same** Bluetooth server used by Home
+Assistant. Both clients refresh state every 2 seconds; successful commands also
+return state immediately. Failed requests report a HomeKit communication error.
+Install the updated server and both clients together. The matching server copy,
+Windows automatic service installer, and deployment checks are documented in
+[source/ideal_led_server/README.md](source/ideal_led_server/README.md).
+
+For a local plugin build: `npm ci`, `npm test -- --runInBand`, `npm run build`.
+Power is unknown after server restart until the first successful on/off command.
+Changes made outside this server (vendor Bluetooth app or physical remote) are
+not currently decoded. HomeKit exposes power, brightness and colour; HA also
+exposes effects and effect speed.

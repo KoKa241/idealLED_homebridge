@@ -2,15 +2,20 @@ import { Service, PlatformAccessory, CharacteristicValue } from 'homebridge';
 import { IdealLEDPlatform } from './platform';
 import axios from 'axios';
 
+interface DeviceState {
+  is_on: boolean | null;
+  brightness: number;
+  hs_color: [number, number];
+}
+
 export class IdealLEDAccessory {
   private service: Service;
-
-  private state = {
-    On: false,
-    Brightness: 100,
-    Hue: 0,
-    Saturation: 0,
-  };
+  private state = { On: false, Brightness: 100, Hue: 0, Saturation: 0 };
+  private available = false;
+  private queue: Promise<unknown> = Promise.resolve();
+  private polling = false;
+  private stopped = false;
+  private readonly timer: ReturnType<typeof setInterval>;
 
   constructor(
     private readonly platform: IdealLEDPlatform,
@@ -20,127 +25,117 @@ export class IdealLEDAccessory {
       .setCharacteristic(this.platform.Characteristic.Manufacturer, 'iDeal LED')
       .setCharacteristic(this.platform.Characteristic.Model, 'LED Strip')
       .setCharacteristic(this.platform.Characteristic.SerialNumber, accessory.context.device.mac);
-
     this.service = this.accessory.getService(this.platform.Service.Lightbulb) || this.accessory.addService(this.platform.Service.Lightbulb);
     this.service.setCharacteristic(this.platform.Characteristic.Name, accessory.context.device.name);
+    this.service.getCharacteristic(this.platform.Characteristic.On).onSet(this.setOn.bind(this)).onGet(this.getOn.bind(this));
+    this.service.getCharacteristic(this.platform.Characteristic.Brightness).onSet(this.setBrightness.bind(this)).onGet(this.getBrightness.bind(this));
+    this.service.getCharacteristic(this.platform.Characteristic.Hue).onSet(this.setHue.bind(this)).onGet(this.getHue.bind(this));
+    this.service.getCharacteristic(this.platform.Characteristic.Saturation).onSet(this.setSaturation.bind(this)).onGet(this.getSaturation.bind(this));
+    void this.syncState();
+    this.timer = setInterval(() => { void this.syncState(); }, 2000);
+    this.platform.api.on('shutdown', () => this.stop());
+  }
 
-    this.service.getCharacteristic(this.platform.Characteristic.On)
-      .onSet(this.setOn.bind(this))
-      .onGet(this.getOn.bind(this));
+  stop() {
+    this.stopped = true;
+    clearInterval(this.timer);
+  }
 
-    this.service.getCharacteristic(this.platform.Characteristic.Brightness)
-      .onSet(this.setBrightness.bind(this))
-      .onGet(this.getBrightness.bind(this));
+  private get url() {
+    return `${this.platform.serverUrl}/api/device/${this.accessory.context.device.mac}`;
+  }
 
-    this.service.getCharacteristic(this.platform.Characteristic.Hue)
-      .onSet(this.setHue.bind(this))
-      .onGet(this.getHue.bind(this));
+  private failure() {
+    return new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+  }
 
-    this.service.getCharacteristic(this.platform.Characteristic.Saturation)
-      .onSet(this.setSaturation.bind(this))
-      .onGet(this.getSaturation.bind(this));
-      
-    // Initial sync
-    this.syncState();
-    
-    // Periodically update state
-    setInterval(() => {
-      this.syncState();
-    }, 10000); // 10 seconds
+  private enqueue<T>(work: () => Promise<T>): Promise<T> {
+    const result = this.queue.then(work);
+    this.queue = result.catch(() => undefined);
+    return result;
+  }
+
+  private applyState(state: DeviceState) {
+    if (!state || !Number.isFinite(state.brightness) || !Array.isArray(state.hs_color)) {
+      throw new Error('Invalid server state');
+    }
+    this.available = true;
+    this.state.Brightness = Math.round(state.brightness * 100 / 255);
+    this.state.Hue = state.hs_color[0];
+    this.state.Saturation = state.hs_color[1];
+    if (typeof state.is_on === 'boolean') {
+      this.state.On = state.is_on;
+      this.service.updateCharacteristic(this.platform.Characteristic.On, this.state.On);
+    } else {
+      this.service.updateCharacteristic(this.platform.Characteristic.On, this.failure());
+    }
+    this.service.updateCharacteristic(this.platform.Characteristic.Brightness, this.state.Brightness);
+    this.service.updateCharacteristic(this.platform.Characteristic.Hue, this.state.Hue);
+    this.service.updateCharacteristic(this.platform.Characteristic.Saturation, this.state.Saturation);
+    this.powerKnown = typeof state.is_on === 'boolean';
+  }
+
+  private powerKnown = false;
+
+  private markUnavailable() {
+    this.available = false;
+    for (const name of ['On', 'Brightness', 'Hue', 'Saturation'] as const) {
+      this.service.updateCharacteristic(this.platform.Characteristic[name], this.failure());
+    }
   }
 
   async syncState() {
+    if (this.polling || this.stopped) { return; }
+    this.polling = true;
     try {
-      const res = await axios.get(`${this.platform.serverUrl}/api/device/${this.accessory.context.device.mac}/state`);
-      if (res.data && res.data.state) {
-        const s = res.data.state;
-        this.state.On = s.is_on;
-        this.state.Brightness = Math.round(s.brightness / 2.55);
-        
-        if (s.hs_color) {
-            this.state.Hue = s.hs_color[0];
-            this.state.Saturation = s.hs_color[1];
-        }
-
-        this.service.updateCharacteristic(this.platform.Characteristic.On, this.state.On);
-        this.service.updateCharacteristic(this.platform.Characteristic.Brightness, this.state.Brightness);
-        this.service.updateCharacteristic(this.platform.Characteristic.Hue, this.state.Hue);
-        this.service.updateCharacteristic(this.platform.Characteristic.Saturation, this.state.Saturation);
-      }
-    } catch (e) {
+      await this.enqueue(async () => {
+        if (this.stopped) { return; }
+        const response = await axios.get(`${this.url}/state`, { timeout: 60000 });
+        this.applyState(response.data.state);
+      });
+    } catch {
+      this.markUnavailable();
       this.platform.log.debug(`Failed to sync state for ${this.accessory.context.device.mac}`);
+    } finally {
+      this.polling = false;
     }
+  }
+
+  private command(payload: () => Record<string, unknown>) {
+    return this.enqueue(async () => {
+      try {
+        const response = await axios.post(`${this.url}/command`, payload(), { timeout: 60000 });
+        this.applyState(response.data.state);
+      } catch {
+        this.markUnavailable();
+        throw this.failure();
+      }
+    });
   }
 
   async setOn(value: CharacteristicValue) {
-    this.state.On = value as boolean;
-    const command = this.state.On ? 'turn_on' : 'turn_off';
-    
-    try {
-      await axios.post(`${this.platform.serverUrl}/api/device/${this.accessory.context.device.mac}/command`, {
-        command
-      });
-      this.platform.log.info(`Set On -> ${value} for ${this.accessory.context.device.mac}`);
-    } catch (e) {
-      this.platform.log.error(`Failed to set On -> ${value} for ${this.accessory.context.device.mac}`);
-      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
-    }
-  }
-
-  async getOn(): Promise<CharacteristicValue> {
-    return this.state.On;
+    await this.command(() => ({ command: value ? 'turn_on' : 'turn_off' }));
   }
 
   async setBrightness(value: CharacteristicValue) {
-    this.state.Brightness = value as number;
-    const hwBrightness = Math.round(this.state.Brightness * 2.55);
-    
-    try {
-      await axios.post(`${this.platform.serverUrl}/api/device/${this.accessory.context.device.mac}/command`, {
-        command: 'set_brightness',
-        brightness: hwBrightness
-      });
-      this.platform.log.info(`Set Brightness -> ${value} for ${this.accessory.context.device.mac}`);
-    } catch (e) {
-      this.platform.log.error(`Failed to set Brightness for ${this.accessory.context.device.mac}`);
-      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
-    }
-  }
-
-  async getBrightness(): Promise<CharacteristicValue> {
-    return this.state.Brightness;
+    await this.command(() => ({ command: 'set_brightness', brightness: Math.round(Number(value) * 255 / 100) }));
   }
 
   async setHue(value: CharacteristicValue) {
-    this.state.Hue = value as number;
-    await this.sendColorCommand();
-  }
-
-  async getHue(): Promise<CharacteristicValue> {
-    return this.state.Hue;
+    await this.command(() => ({ command: 'set_rgb_color', hs_color: [Number(value), this.state.Saturation] }));
   }
 
   async setSaturation(value: CharacteristicValue) {
-    this.state.Saturation = value as number;
-    await this.sendColorCommand();
+    await this.command(() => ({ command: 'set_rgb_color', hs_color: [this.state.Hue, Number(value)] }));
   }
 
-  async getSaturation(): Promise<CharacteristicValue> {
-    return this.state.Saturation;
+  private read(name: keyof typeof this.state): CharacteristicValue {
+    if (!this.available || (name === 'On' && !this.powerKnown)) { throw this.failure(); }
+    return this.state[name];
   }
 
-  async sendColorCommand() {
-    const hwBrightness = Math.round(this.state.Brightness * 2.55);
-    try {
-      await axios.post(`${this.platform.serverUrl}/api/device/${this.accessory.context.device.mac}/command`, {
-        command: 'set_rgb_color',
-        hs_color: [this.state.Hue, this.state.Saturation],
-        brightness: hwBrightness
-      });
-      this.platform.log.info(`Set Color -> H:${this.state.Hue} S:${this.state.Saturation} for ${this.accessory.context.device.mac}`);
-    } catch (e) {
-      this.platform.log.error(`Failed to set Color for ${this.accessory.context.device.mac}`);
-      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
-    }
-  }
+  async getOn() { return this.read('On'); }
+  async getBrightness() { return this.read('Brightness'); }
+  async getHue() { return this.read('Hue'); }
+  async getSaturation() { return this.read('Saturation'); }
 }

@@ -16,7 +16,7 @@ export class IdealLEDPlatform implements DynamicPlatformPlugin {
   ) {
     this.Service = this.api.hap.Service;
     this.Characteristic = this.api.hap.Characteristic;
-    this.serverUrl = config.serverUrl || 'http://127.0.0.1:8282';
+    this.serverUrl = (config.serverUrl || 'http://127.0.0.1:8282').replace(/\/$/, '');
     
     this.log.debug('Finished initializing platform:', this.config.name);
 
@@ -46,7 +46,7 @@ export class IdealLEDPlatform implements DynamicPlatformPlugin {
   async discoverDevices() {
     try {
       this.log.info('Discovering devices from server:', this.serverUrl);
-      const response = await axios.get(`${this.serverUrl}/api/discover`);
+      const response = await axios.get(`${this.serverUrl}/api/discover`, { timeout: 15000 });
       const devices = response.data.devices || [];
 
       for (const device of devices) {
